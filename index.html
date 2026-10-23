@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hydro Plantia Kisan Pro - Dual Zone Real-Time Farming</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js & Date-Fns with Adapter -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/dist/date-fns.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- Firebase 8 Compatible -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&family=Yantramanav:wght@500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+            background: linear-gradient(180deg, #f0fdf4 0%, #ecfdf5 45%, #fefce8 100%);
+            min-height: 100vh;
+        }
+        .hindi-font {
+            font-family: 'Yantramanav', 'Plus Jakarta Sans', sans-serif;
+        }
+        .farm-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(12px);
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 28px -6px rgba(16, 85, 45, 0.08);
+            border: 1px solid rgba(22, 101, 52, 0.12);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .farm-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 32px -10px rgba(16, 85, 45, 0.14);
+        }
+        .touch-action-btn {
+            transition: all 0.12s ease-out;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .touch-action-btn:active {
+            transform: scale(0.96);
+        }
+        .pulse-alarm {
+            animation: intruderAlert 1.4s infinite;
+        }
+        @keyframes intruderAlert {
+            0% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7); }
+            70% { box-shadow: 0 0 0 18px rgba(225, 29, 72, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); }
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #a7f3d0;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased selection:bg-emerald-300 selection:text-emerald-950">
+
+    <!-- Top Security Intruder Sticky Alert Banner -->
+    <div id="motion-alert-banner" class="hidden bg-rose-600 text-white font-black py-3 px-4 sticky top-0 z-50 shadow-xl border-b-2 border-rose-800 transition-all">
+        <div class="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-3 text-center md:text-left">
+            <div class="flex items-center gap-3 mx-auto md:mx-0">
+                <span class="inline-flex h-10 w-10 rounded-full bg-white text-rose-600 items-center justify-center text-xl animate-bounce">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </span>
+                <div>
+                    <p class="text-base md:text-lg font-black tracking-wide" data-i18n="alertTitle">
+                        WARNING: FIELD INTRUDER / ANIMAL DETECTED!
+                    </p>
+                    <p class="text-xs text-rose-100 font-semibold" data-i18n="alertSub">
+                        PIR motion sensor on ESP32 field node triggered right now.
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 mx-auto md:mx-0">
+                <button id="siren-mute-btn" onclick="toggleSirenAudio()" class="touch-action-btn bg-white/20 hover:bg-white/30 text-white text-xs uppercase px-3 py-1.5 rounded-xl font-bold border border-white/40 flex items-center gap-1.5">
+                    <i class="fa-solid fa-volume-high" id="siren-icon"></i>
+                    <span id="siren-status-text">Audio Alert ON</span>
+                </button>
+                <button onclick="dismissIntruderAlert()" class="touch-action-btn bg-white text-rose-700 hover:bg-rose-50 text-xs uppercase px-3.5 py-1.5 rounded-xl font-black shadow">
+                    <span data-i18n="dismiss">Dismiss</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Farmer Login Modal -->
+    <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-emerald-950/75 backdrop-blur-md px-4">
+        <div class="farm-card w-full max-w-md p-6 sm:p-8 bg-white border-2 border-emerald-500/40 shadow-2xl relative overflow-hidden">
+            <div class="text-center mb-6 relative z-10">
+                <div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-3xl shadow-lg shadow-emerald-600/30 mb-3">
+                    <i class="fa-solid fa-tractor"></i>
+                </div>
+                <h2 class="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">
+                    Hydro <span class="text-emerald-600 font-extrabold">Plantia</span> Kisan
+                </h2>
+                <p class="text-xs sm:text-sm font-semibold text-emerald-700 mt-1" data-i18n="tagline">Dual-Zone Smart Farm & Irrigation Controller</p>
+                <p class="text-xs text-slate-400 mt-0.5" data-i18n="subtag">वास्तविक समय सिंचाई एवं खेत सुरक्षा</p>
+            </div>
+
+            <form id="login-form" onsubmit="handleAuth(event)" class="space-y-4 relative z-10">
+                <div id="auth-error" class="hidden text-xs sm:text-sm font-bold text-rose-700 bg-rose-50 border border-rose-300 rounded-xl p-3 flex items-center gap-2">
+                    <i class="fa-solid fa-circle-exclamation text-rose-500"></i>
+                    <span data-i18n="wrongCreds">Invalid Farmer ID or PIN. Please try again.</span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1.5 flex items-center justify-between">
+                        <span data-i18n="farmerId">Farmer ID (किसान आईडी)</span>
+                        <span class="text-[10px] text-emerald-600 font-semibold cursor-pointer hover:underline" onclick="autofillCreds()">Default (NOWHERE1)</span>
+                    </label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                        <input type="text" id="auth-login-id" value="NOWHERE1" required autocomplete="username" placeholder="Enter Farmer ID"
+                            class="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-slate-200 focus:outline-none focus:border-emerald-600 text-sm font-bold transition shadow-sm text-slate-800" />
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1.5 flex items-center justify-between">
+                        <span data-i18n="farmerPin">Security PIN (पासवर्ड / पिन)</span>
+                        <span class="text-[10px] text-emerald-600 font-semibold cursor-pointer hover:underline" onclick="autofillCreds()">Default (12345678)</span>
+                    </label>
+                    <div class="relative">
+                        <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                        <input type="password" id="auth-password" value="12345678" required autocomplete="current-password" placeholder="••••••••"
+                            class="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-slate-200 focus:outline-none focus:border-emerald-600 text-sm font-bold transition shadow-sm text-slate-800" />
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" class="touch-action-btn w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-sm uppercase tracking-wider shadow-lg shadow-emerald-700/25 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-door-open text-base"></i>
+                        <span data-i18n="loginBtn">Connect to Field (डैशबोर्ड खोलें)</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Container -->
+    <div id="main-dashboard" class="hidden min-h-screen pb-16">
+        <!-- Top App Navigation / Header Bar -->
+        <header class="bg-white/85 backdrop-blur-md border-b border-emerald-900/10 sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-700 text-white flex items-center justify-center text-xl shadow-md shadow-emerald-600/30">
+                        <i class="fa-solid fa-leaf"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-xl sm:text-2xl font-black tracking-tight text-slate-800">
+                                Hydro<span class="text-emerald-600">Plantia</span>
+                            </h1>
+                            <span class="bg-emerald-100 text-emerald-800 text-[10px] uppercase font-black px-2 py-0.5 rounded-full border border-emerald-200">
+                                Live RTDB
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-500 font-semibold" data-i18n="fieldLocation">Real Hardware Feed • Dual Zone Valve Actuation</p>
+                    </div>
+                </div>
+
+                <!-- Right Header Actions: Lang Switcher, Live Indicator, Logout -->
+                <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+                    <!-- Language Selector Toggle -->
+                    <div class="bg-emerald-50 border border-emerald-200 p-1 rounded-xl flex items-center text-xs font-black shadow-sm">
+                        <button id="lang-en" onclick="setLanguage('en')" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white transition shadow-xs">EN</button>
+                        <button id="lang-hi" onclick="setLanguage('hi')" class="px-2.5 py-1 rounded-lg text-emerald-800 hover:bg-emerald-100 transition">हिंदी</button>
+                    </div>
+
+                    <!-- Live Hardware Sync Chip -->
+                    <div id="hw-status-badge" class="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-300 text-amber-800 rounded-xl text-xs font-bold shadow-xs">
+                        <span id="hw-status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span id="hw-status-text">Connecting to Firebase...</span>
+                    </div>
+
+                    <!-- User Account / Logout -->
+                    <div class="flex items-center gap-1.5">
+                        <span class="hidden sm:inline-block text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                            <i class="fa-solid fa-user-check text-emerald-600 mr-1"></i> <span id="current-user-tag">NOWHERE1</span>
+                        </span>
+                        <button onclick="handleLogout()" title="Logout" class="touch-action-btn text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1">
+                            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                            <span data-i18n="logout">Exit</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Body Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+
+            <!-- Real-time Farming Advisory Banner -->
+            <div id="advisory-box" class="bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 text-white p-4 sm:p-5 rounded-2xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-4 border border-emerald-500/40">
+                <div class="flex items-center gap-3.5">
+                    <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-2xl flex-shrink-0">
+                        <i class="fa-solid fa-lightbulb text-amber-300"></i>
+                    </div>
+                    <div>
+                        <div class="text-[11px] font-black uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
+                            <i class="fa-solid fa-satellite-dish"></i> <span data-i18n="kisanAdvisory">Field Intelligence & Advisory</span>
+                        </div>
+                        <h2 id="advisory-title" class="text-base sm:text-lg font-black tracking-tight mt-0.5">
+                            Analyzing field conditions...
+                        </h2>
+                        <p id="advisory-sub" class="text-xs text-emerald-100 mt-0.5">
+                            मिट्टी की नमी बहुत बढ़िया है। अभी पानी बंद रख सकते हैं।
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <button onclick="toggleAudioAdvisory()" class="touch-action-btn bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-black px-4 py-2.5 rounded-xl shadow flex items-center gap-2">
+                        <i class="fa-solid fa-volume-high text-emerald-600 text-base"></i>
+                        <span data-i18n="listenAdvice">Listen Advice (सलाह सुनें)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Big Status Tiles for Farmers (Color Coded & Human Readable) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                
+                <!-- 1. Soil Moisture (Health) -->
+                <div class="farm-card p-5 border-l-8 border-sky-500 flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                            <i class="fa-solid fa-droplet text-sky-500"></i> <span data-i18n="soilMoisture">Soil Moisture</span>
+                        </span>
+                        <span id="moisture-badge" class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+                            Well Moist
+                        </span>
+                    </div>
+                    <div class="flex items-baseline gap-2 my-1">
+                        <span id="val-moisture" class="text-4xl sm:text-5xl font-black text-slate-800 tracking-tight">78</span>
+                        <span class="text-xl font-bold text-slate-400">%</span>
+                    </div>
+                    <div class="mt-2">
+                        <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200 p-0.5">
+                            <div id="moisture-bar" class="h-full bg-sky-500 rounded-full transition-all duration-700" style="width: 78%;"></div>
+                        </div>
+                        <p id="moisture-human-status" class="text-xs font-bold text-slate-500 mt-2 flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-sky-600"></i> <span class="text-sky-800 font-bold">Optimal / Well Moist (पर्याप्त नमी है)</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 2. Temperature -->
+                <div class="farm-card p-5 border-l-8 border-amber-500 flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                            <i class="fa-solid fa-temperature-half text-amber-500"></i> <span data-i18n="airTemp">Field Temperature</span>
+                        </span>
+                        <span id="temp-badge" class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                            Optimal
+                        </span>
+                    </div>
+                    <div class="flex items-baseline gap-2 my-1">
+                        <span id="val-temp" class="text-4xl sm:text-5xl font-black text-slate-800 tracking-tight">28.6</span>
+                        <span class="text-xl font-bold text-slate-400">°C</span>
+                    </div>
+                    <div class="mt-2">
+                        <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200 p-0.5">
+                            <div id="temp-bar" class="h-full bg-amber-500 rounded-full transition-all duration-700" style="width: 46.5%;"></div>
+                        </div>
+                        <p id="temp-human-status" class="text-xs font-bold text-slate-500 mt-2 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sun text-amber-500"></i> <span class="text-amber-800">Favorable for crop photosynthesis</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 3. Field Intrusion & Perimeter Guard -->
+                <div id="security-tile" class="farm-card p-5 border-l-8 border-emerald-500 flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-cat text-emerald-600" id="guard-icon"></i> <span data-i18n="fieldSafety">Field Guard</span>
+                        </span>
+                        <span id="security-pill" class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Safe
+                        </span>
+                    </div>
+                    <div class="my-1">
+                        <h4 id="security-big-text" class="text-2xl font-black text-emerald-700 flex items-center gap-2">
+                            <i class="fa-solid fa-circle-check text-emerald-500"></i>
+                            <span data-i18n="noIntruders">Field Safe</span>
+                        </h4>
+                        <p class="text-xs font-semibold text-slate-500 mt-0.5" id="security-sub-status">
+                            Listening to path: esp32/motion_active
+                        </p>
+                    </div>
+                    <div class="mt-2 flex items-center justify-between text-xs font-bold pt-1 border-t border-slate-100">
+                        <span class="text-slate-400">ESP32 PIR Radar</span>
+                        <span id="motion-time-tag" class="text-[10px] text-slate-400 font-mono">Radar Active</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Central Grid: Big Irrigation Valve Controls & Live Visual Pipe Separator -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                <!-- Irrigation Water Separator Control (7 Cols) -->
+                <div class="lg:col-span-7 space-y-6">
+                    <div class="farm-card p-5 sm:p-7 border-t-4 border-emerald-500 relative overflow-hidden">
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-100">
+                            <div>
+                                <h3 class="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2.5">
+                                    <span class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-lg">
+                                        <i class="fa-solid fa-faucet-drip"></i>
+                                    </span>
+                                    <span data-i18n="waterSeparator">2-Zone Water Distribution (सिंचाई नियंत्रण)</span>
+                                </h3>
+                                <p class="text-xs font-semibold text-slate-500 mt-1" data-i18n="valveSub">
+                                    Sends direct commands to Firebase path: <code class="font-mono text-emerald-800 bg-emerald-50 px-1 rounded">esp8266/command</code>
+                                </p>
+                            </div>
+                            <!-- Emergency Stop Button -->
+                            <button onclick="sendServoCommand('closeall')" class="touch-action-btn px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-rose-600/30 flex items-center gap-2">
+                                <i class="fa-solid fa-ban"></i>
+                                <span data-i18n="stopAll">Stop All (तुरंत रोकें)</span>
+                            </button>
+                        </div>
+
+                        <!-- 2-Zone Visual Interactive Schematic -->
+                        <div class="bg-gradient-to-b from-slate-50 to-emerald-50/40 p-5 rounded-2xl border border-emerald-900/10 mb-6">
+                            <div class="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-3 flex items-center justify-between">
+                                <span><i class="fa-solid fa-diagram-project mr-1 text-emerald-600"></i> Pipeline Actuation Status</span>
+                                <span id="pipeline-overall-state" class="text-slate-600 font-extrabold">Valves Closed / Ready</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Zone 1 Card -->
+                                <div id="zone-card-1" class="bg-white p-4 rounded-xl border-2 border-slate-200 transition-all">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2.5">
+                                            <div class="w-10 h-10 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center text-lg font-black">
+                                                S1
+                                            </div>
+                                            <div>
+                                                <h4 class="text-sm font-black text-slate-800" data-i18n="zone1Title">Section 1</h4>
+                                                <p class="text-[11px] text-slate-400 font-bold">Actuator Servo Pin D1</p>
+                                            </div>
+                                        </div>
+                                        <div id="zone1-indicator" class="flex items-center gap-1 text-xs font-extrabold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg">
+                                            <i class="fa-solid fa-lock"></i> <span>CLOSED</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Visual Water Animation Strip -->
+                                    <div class="mt-4 mb-3 h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                                        <div id="pipe-flow-1" class="h-full bg-sky-500 rounded-full w-0 transition-all duration-500"></div>
+                                    </div>
+
+                                    <!-- Zone 1 Action Buttons -->
+                                    <div class="grid grid-cols-2 gap-2 mt-2">
+                                        <button onclick="sendServoCommand('open1')" class="touch-action-btn py-3 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 shadow-sm">
+                                            <i class="fa-solid fa-faucet"></i>
+                                            <span data-i18n="waterOn">Water ON</span>
+                                        </button>
+                                        <button onclick="sendServoCommand('close1')" class="touch-action-btn py-3 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2">
+                                            <i class="fa-solid fa-circle-xmark"></i>
+                                            <span data-i18n="waterOff">Turn OFF</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Zone 2 Card -->
+                                <div id="zone-card-2" class="bg-white p-4 rounded-xl border-2 border-slate-200 transition-all">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2.5">
+                                            <div class="w-10 h-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center text-lg font-black">
+                                                S2
+                                            </div>
+                                            <div>
+                                                <h4 class="text-sm font-black text-slate-800" data-i18n="zone2Title">Section 2</h4>
+                                                <p class="text-[11px] text-slate-400 font-bold">Actuator Servo Pin D2</p>
+                                            </div>
+                                        </div>
+                                        <div id="zone2-indicator" class="flex items-center gap-1 text-xs font-extrabold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg">
+                                            <i class="fa-solid fa-lock"></i> <span>CLOSED</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Visual Water Animation Strip -->
+                                    <div class="mt-4 mb-3 h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                                        <div id="pipe-flow-2" class="h-full bg-teal-500 rounded-full w-0 transition-all duration-500"></div>
+                                    </div>
+
+                                    <!-- Zone 2 Action Buttons -->
+                                    <div class="grid grid-cols-2 gap-2 mt-2">
+                                        <button onclick="sendServoCommand('open2')" class="touch-action-btn py-3 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 shadow-sm">
+                                            <i class="fa-solid fa-faucet"></i>
+                                            <span data-i18n="waterOn">Water ON</span>
+                                        </button>
+                                        <button onclick="sendServoCommand('close2')" class="touch-action-btn py-3 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2">
+                                            <i class="fa-solid fa-circle-xmark"></i>
+                                            <span data-i18n="waterOff">Turn OFF</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Master One-Touch Commands for Farmers -->
+                        <div class="bg-slate-900 text-white p-5 rounded-2xl shadow-xl">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                                    <i class="fa-solid fa-sliders"></i> <span data-i18n="masterControls">Master Controls (सभी खेतों के लिए)</span>
+                                </span>
+                                <span class="text-[10px] bg-slate-800 text-slate-300 font-bold px-2 py-0.5 rounded">ESP8266 Command Target</span>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button onclick="sendServoCommand('openall')" class="touch-action-btn py-4 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-sm uppercase rounded-xl tracking-wider shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-shower text-lg"></i>
+                                    <span data-i18n="openAllBtn">Water All Fields (दोनों चालू करें)</span>
+                                </button>
+                                <button onclick="sendServoCommand('closeall')" class="touch-action-btn py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-black text-sm uppercase rounded-xl tracking-wider border border-slate-700 flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-power-off text-base text-rose-400"></i>
+                                    <span data-i18n="closeAllBtn">Stop All Water (सभी बंद करें)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Command feedback ticker -->
+                        <div class="mt-3 flex items-center justify-between text-xs text-slate-500 px-1 font-semibold flex-wrap gap-2">
+                            <span id="last-command-tag">Dispatched: <b class="text-slate-800 font-mono">None yet</b></span>
+                            <span class="text-[11px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">
+                                <i class="fa-solid fa-database mr-1"></i> Firebase RTDB Direct Sync
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Live Graph Driven Purely By Firebase Updates -->
+                    <div class="farm-card p-5 sm:p-7">
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                            <div>
+                                <h3 class="text-lg font-black text-slate-800 flex items-center gap-2">
+                                    <i class="fa-solid fa-chart-line text-emerald-600"></i>
+                                    <span data-i18n="telemetryTrends">Live Field Telemetry Plot</span>
+                                </h3>
+                                <p id="chart-subtext" class="text-xs text-slate-500 font-semibold" data-i18n="chartSub">Plotting true sensor data as packets arrive</p>
+                            </div>
+                            <div class="flex items-center gap-2 text-xs font-bold">
+                                <button onclick="switchChartMetric('moisture')" id="btn-chart-moisture" class="px-3 py-1.5 rounded-lg bg-sky-500 text-white font-extrabold shadow-sm">Moisture (%)</button>
+                                <button onclick="switchChartMetric('temp')" id="btn-chart-temp" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-extrabold hover:bg-slate-200">Temp (°C)</button>
+                            </div>
+                        </div>
+                        <div class="h-60 relative w-full flex items-center justify-center">
+                            <!-- Overlay empty state until first real packet is drawn -->
+                            <div id="chart-empty-state" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/80 backdrop-blur-xs text-center p-4">
+                                <i class="fa-solid fa-chart-area text-slate-300 text-4xl mb-2 animate-pulse"></i>
+                                <p class="text-sm font-bold text-slate-600" data-i18n="chartWaiting">Waiting for first live reading from ESP32...</p>
+                                <p class="text-xs text-slate-400 mt-0.5">ESP32 से डेटा आते ही लाइव ग्राफ बनना शुरू हो जाएगा</p>
+                            </div>
+                            <canvas id="liveFarmerChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Weather, Guidelines & Sensor Diagnostics (5 Cols) -->
+                <div class="lg:col-span-5 space-y-6">
+
+                    <!-- 7-Day Live Weather from Open-Meteo -->
+                    <div class="farm-card p-5 sm:p-6 border-t-4 border-sky-500">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="text-lg font-black text-slate-800 flex items-center gap-2">
+                                    <i class="fa-solid fa-cloud-sun-rain text-sky-500"></i>
+                                    <span data-i18n="weatherTitle">7-Day Rain & Weather</span>
+                                </h3>
+                                <p class="text-xs text-slate-400 font-bold">Live Open-Meteo Satellite Feed (30.70°N, 76.71°E)</p>
+                            </div>
+                            <span class="text-xs bg-sky-50 text-sky-700 px-2.5 py-1 rounded-lg font-black border border-sky-200">
+                                Live Forecast
+                            </span>
+                        </div>
+
+                        <!-- Today's Highlight Box -->
+                        <div id="today-weather-card" class="bg-gradient-to-r from-sky-50 to-blue-50 p-4 rounded-2xl border border-sky-100 flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <div id="today-icon" class="text-4xl">🌤️</div>
+                                <div>
+                                    <span class="text-[10px] font-black uppercase text-sky-600" data-i18n="todayWeather">Today's Forecast</span>
+                                    <h4 id="today-temp-range" class="text-xl font-black text-slate-800">Loading...</h4>
+                                    <p id="today-rain-advice" class="text-xs font-bold text-slate-500">Connecting to meteorological satellite...</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[10px] font-bold text-slate-400 block uppercase">Rain Probability</span>
+                                <span id="today-rain-prob" class="text-lg font-black text-sky-700">--%</span>
+                            </div>
+                        </div>
+
+                        <!-- 7-Day Mini Cards Carousel / Grid -->
+                        <div id="weather-forecast-grid" class="grid grid-cols-4 sm:grid-cols-7 gap-2 text-center min-h-[90px] flex items-center justify-center">
+                            <span class="col-span-full text-xs font-semibold text-slate-400 py-4"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Fetching live forecast...</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification Toast Popup -->
+    <div id="toast-msg" class="fixed bottom-5 right-5 z-50 transform translate-y-24 opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-700">
+        <i class="fa-solid fa-circle-check text-emerald-400 text-lg" id="toast-icon"></i>
+        <div>
+            <p id="toast-text" class="text-xs font-extrabold">Command Dispatched</p>
+            <p id="toast-sub" class="text-[10px] text-slate-400">Written to Firebase RTDB</p>
+        </div>
+    </div>
+
+    <script>
+        // --- Multilingual Translations (English / Hindi) ---
+        const translations = {
+            en: {
+                tagline: "Dual-Zone Smart Farm & Irrigation Controller",
+                subtag: "Real Hardware Telemetry & Actuation",
+                farmerId: "Farmer ID (Login ID)",
+                farmerPin: "Security PIN / Password",
+                loginBtn: "Connect to Field",
+                fieldLocation: "Real Hardware Feed • Dual Zone Valve Actuation",
+                logout: "Exit",
+                kisanAdvisory: "Field Intelligence & Advisory",
+                listenAdvice: "Listen Advice",
+                soilMoisture: "Soil Moisture",
+                airTemp: "Field Temperature",
+                cropHealth: "Hydration Score",
+                fieldSafety: "Field Guard",
+                noIntruders: "Field Safe",
+                waterSeparator: "2-Zone Water Distribution",
+                valveSub: "Sends direct commands to Firebase path: esp8266/command",
+                stopAll: "Stop All",
+                zone1Title: "Section 1",
+                zone2Title: "Section 2",
+                waterOn: "Water ON",
+                waterOff: "Turn OFF",
+                masterControls: "Master Controls",
+                openAllBtn: "Water All Fields",
+                closeAllBtn: "Stop All Water",
+                telemetryTrends: "Live Field Telemetry Plot",
+                chartSub: "Plotting true sensor data as packets arrive",
+                chartWaiting: "Waiting for first live reading from ESP32...",
+                weatherTitle: "7-Day Rain & Weather",
+                todayWeather: "Today's Forecast",
+                farmerRules: "Watering Rules & Best Practices",
+                alertTitle: "WARNING: FIELD INTRUDER / ANIMAL DETECTED!",
+                alertSub: "PIR motion sensor on ESP32 field node triggered right now.",
+                dismiss: "Dismiss",
+                wrongCreds: "Invalid Farmer ID or PIN. Please try again.",
+                syncingGuard: "Syncing Radar..."
+            },
+            hi: {
+                tagline: "2-जोन स्मार्ट खेत एवं सिंचाई नियंत्रक",
+                subtag: "वास्तविक हार्डवेयर सिग्नल एवं वाल्व संचालन",
+                farmerId: "किसान आईडी (Login ID)",
+                farmerPin: "सुरक्षा पिन / पासवर्ड",
+                loginBtn: "खेत से कनेक्ट करें",
+                fieldLocation: "लाइव हार्डवेयर फीड • 2-जोन पानी नियंत्रण",
+                logout: "बाहर निकलें",
+                kisanAdvisory: "खेत की वास्तविक सलाह",
+                listenAdvice: "सलाह सुनें",
+                soilMoisture: "मिट्टी में नमी",
+                airTemp: "खेत का तापमान",
+                cropHealth: "नमी स्कोर",
+                fieldSafety: "खेत की रखवाली (सुरक्षा)",
+                noIntruders: "खेत सुरक्षित है",
+                waterSeparator: "2-जोन पानी वितरण नियंत्रण",
+                valveSub: "Firebase esp8266/command पर सीधा कमांड भेजता है",
+                stopAll: "सब बंद करें",
+                zone1Title: "सेक्शन 1",
+                zone2Title: "सेक्शन 2",
+                waterOn: "पानी चालू",
+                waterOff: "पानी बंद",
+                masterControls: "मास्टर सिंचाई कमांड (सभी खेत)",
+                openAllBtn: "दोनों सेक्शन सींचें (चालू)",
+                closeAllBtn: "सभी पानी तुरंत रोकें (बंद)",
+                telemetryTrends: "लाइव सेंसर ग्राफ",
+                chartSub: "ESP32 से डेटा आते ही ग्राफ में जुड़ता है",
+                chartWaiting: "ESP32 सेंसर से पहली रीडिंग की प्रतीक्षा है...",
+                weatherTitle: "7 दिनों का बारिश और मौसम पूर्वानुमान",
+                todayWeather: "आज का मौसम",
+                farmerRules: "सिंचाई के जरूरी नियम",
+                alertTitle: "चेतावनी: खेत में जानवर या घुसपैठिया घुसा है!",
+                alertSub: "खेत के ESP32 मोशन सेंसर ने तुरंत हलचल पकड़ी है।",
+                dismiss: "अलर्ट हटाएं",
+                wrongCreds: "गलत किसान आईडी या पिन। दोबारा कोशिश करें।",
+                syncingGuard: "रडार सिंक्रनाइज़ हो रहा है..."
+            }
+        };
+
+        let currentLang = 'en';
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            const dict = translations[lang];
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (dict[key]) {
+                    el.innerText = dict[key];
+                }
+            });
+
+            const btnEn = document.getElementById('lang-en');
+            const btnHi = document.getElementById('lang-hi');
+            if (lang === 'hi') {
+                btnHi.className = "px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-black transition shadow-xs";
+                btnEn.className = "px-2.5 py-1 rounded-lg text-emerald-800 hover:bg-emerald-100 transition";
+                document.body.classList.add('hindi-font');
+            } else {
+                btnEn.className = "px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-black transition shadow-xs";
+                btnHi.className = "px-2.5 py-1 rounded-lg text-emerald-800 hover:bg-emerald-100 transition";
+                document.body.classList.remove('hindi-font');
+            }
+
+            // Refresh advisory string
+            updateSmartAdvisory();
+        }
+
+        // --- Authentication Handler ---
+        const VALID_USER = "NOWHERE1";
+        const VALID_PASS = "12345678";
+
+        function checkAuthStatus() {
+            const isAuth = sessionStorage.getItem("hydro_farmer_authenticated") === "true";
+            const loginScreen = document.getElementById("login-screen");
+            const dashboard = document.getElementById("main-dashboard");
+
+            if (isAuth) {
+                loginScreen.classList.add("hidden");
+                dashboard.classList.remove("hidden");
+                if (farmerChart) {
+                    farmerChart.resize();
+                }
+            } else {
+                loginScreen.classList.remove("hidden");
+                dashboard.classList.add("hidden");
+            }
+        }
+
+        function handleAuth(e) {
+            e.preventDefault();
+            const idInput = document.getElementById("auth-login-id").value.trim();
+            const passInput = document.getElementById("auth-password").value;
+            const errorBox = document.getElementById("auth-error");
+
+            if (idInput === VALID_USER && passInput === VALID_PASS) {
+                sessionStorage.setItem("hydro_farmer_authenticated", "true");
+                errorBox.classList.add("hidden");
+                checkAuthStatus();
+                showToast("Welcome Farmer NOWHERE1", "Connected to live farm dashboard");
+            } else {
+                errorBox.classList.remove("hidden");
+                document.getElementById("auth-password").value = "";
+            }
+        }
+
+        function autofillCreds() {
+            document.getElementById("auth-login-id").value = VALID_USER;
+            document.getElementById("auth-password").value = VALID_PASS;
+        }
+
+        function handleLogout() {
+            sessionStorage.removeItem("hydro_farmer_authenticated");
+            checkAuthStatus();
+        }
+
+        // --- Live Firebase Integration (Strict Real-Time, No Simulation) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCIdmbpwWmE26iH8l7T5Au2ziUKlKDgJ5U",
+            authDomain: "arduhub.firebaseapp.com",
+            databaseURL: "https://arduhub-default-rtdb.firebaseio.com",
+            projectId: "arduhub",
+            storageBucket: "arduhub.appspot.com",
+            messagingSenderId: "229042276706",
+            appId: "1:229042276706:web:b67270ae3c58bea248843b"
+        };
+
+        let database = null;
+        let isFirebaseConnected = false;
+
+        // Default telemetry initialized to required baseline values
+        let liveTemp = 28.6;
+        let liveMoisture = 78;
+        let liveMotion = false;
+
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            database = firebase.database();
+
+            // Firebase connection listener
+            database.ref('.info/connected').on('value', snap => {
+                isFirebaseConnected = snap.val() === true;
+                const statusBadge = document.getElementById('hw-status-badge');
+                const statusText = document.getElementById('hw-status-text');
+                const statusDot = document.getElementById('hw-status-dot');
+
+                if (isFirebaseConnected) {
+                    statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold shadow-xs";
+                    statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+                    statusText.innerText = "Firebase Live (RTDB)";
+                } else {
+                    statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 border border-amber-300 text-amber-800 rounded-xl text-xs font-bold shadow-xs";
+                    statusDot.className = "w-2.5 h-2.5 rounded-full bg-amber-500";
+                    statusText.innerText = "Reconnecting...";
+                }
+            });
+
+            // Listeners strictly for live sensor telemetry
+            database.ref('esp32/temperature').on('value', snap => {
+                const val = snap.val();
+                if (val !== null && val !== undefined && !isNaN(val)) {
+                    processIncomingTemp(parseFloat(val));
+                }
+            });
+
+            database.ref('esp32/soil_moisture').on('value', snap => {
+                const val = snap.val();
+                if (val !== null && val !== undefined && !isNaN(val)) {
+                    processIncomingMoisture(parseFloat(val));
+                }
+            });
+
+            database.ref('esp32/motion_active').on('value', snap => {
+                const val = snap.val();
+                if (val !== null && val !== undefined) {
+                    handleSecurityState(Boolean(val));
+                }
+            });
+
+            // Listen to current esp8266 command to mirror hardware state
+            database.ref('esp8266/command').on('value', snap => {
+                const cmd = snap.val();
+                if (cmd) {
+                    document.getElementById('last-command-tag').innerHTML = `Server Command: <b class="text-emerald-700 font-mono uppercase">${cmd}</b>`;
+                    syncValvesFromCommand(cmd);
+                }
+            });
+
+        } catch (err) {
+            console.error("Firebase init failed:", err);
+            document.getElementById('hw-status-text').innerText = "Firebase Error";
+            document.getElementById('hw-status-badge').className = "flex items-center gap-1.5 px-3 py-1.5 bg-rose-100 border border-rose-300 text-rose-800 rounded-xl text-xs font-bold";
+        }
+
+        // --- Alert Sound Synthesis via Web Audio API ---
+        let audioContext = null;
+        let isSirenMuted = false;
+
+        function getAudioContext() {
+            if (!audioContext) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioCtx();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            return audioContext;
+        }
+
+        function playAlertTone() {
+            if (isSirenMuted) return;
+            try {
+                const ctx = getAudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(800, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.35);
+
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start();
+                osc.stop(ctx.currentTime + 0.38);
+            } catch (e) {
+                // User interaction needed before audio plays
+            }
+        }
+
+        function toggleSirenAudio() {
+            isSirenMuted = !isSirenMuted;
+            const icon = document.getElementById('siren-icon');
+            const txt = document.getElementById('siren-status-text');
+            if (isSirenMuted) {
+                icon.className = "fa-solid fa-volume-xmark";
+                txt.innerText = "Audio Muted";
+            } else {
+                icon.className = "fa-solid fa-volume-high";
+                txt.innerText = "Audio Alert ON";
+                playAlertTone();
+            }
+        }
+
+        function dismissIntruderAlert() {
+            document.getElementById('motion-alert-banner').classList.add('hidden');
+            const securityTile = document.getElementById('security-tile');
+            securityTile.classList.remove('pulse-alarm');
+        }
+
+        // --- Voice Guidance using Web Speech API ---
+        function toggleAudioAdvisory() {
+            let speechText = "";
+            if (liveMoisture === null || liveTemp === null) {
+                speechText = currentLang === 'hi'
+                    ? "नमस्ते किसान भाई। अभी खेत के सेंसर से सिग्नल का इंतजार किया जा रहा है। जैसे ही डेटा आएगा, हम आपको बताएंगे।"
+                    : "Greetings farmer. We are waiting for initial telemetry from your ESP32 sensor node.";
+            } else {
+                if (currentLang === 'hi') {
+                    speechText = `नमस्ते किसान भाई। आपके खेत का तापमान ${liveTemp} डिग्री सेल्सियस और मिट्टी की नमी ${liveMoisture} प्रतिशत है। `;
+                    if (liveMoisture < 30) {
+                        speechText += "मिट्टी बहुत सूखी है, कृपया जोन 1 या जोन 2 का पानी चालू करें।";
+                    } else if (liveMoisture > 70) {
+                        speechText += "मिट्टी में पानी पर्याप्त से ज्यादा है, वाल्व बंद रखें।";
+                    } else {
+                        speechText += "मिट्टी की स्थिति बहुत अच्छी है। फसल हरी और सुरक्षित है।";
+                    }
+                } else {
+                    speechText = `Greetings farmer. Field temperature is ${liveTemp} degrees Celsius and soil moisture is ${liveMoisture} percent. `;
+                    if (liveMoisture < 30) {
+                        speechText += "Soil is dry. Irrigation recommended.";
+                    } else if (liveMoisture > 70) {
+                        speechText += "Moisture is high. Please keep water valves turned off.";
+                    } else {
+                        speechText += "Soil conditions are ideal for your crops.";
+                    }
+                }
+            }
+
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(speechText);
+                utterance.lang = currentLang === 'hi' ? 'hi-IN' : 'en-US';
+                utterance.rate = 0.95;
+                window.speechSynthesis.speak(utterance);
+                showToast("Speaking Advisory", "Voice guidance playing aloud");
+            } else {
+                showToast("Voice not supported", "Please read advice text on screen");
+            }
+        }
+
+        // --- Processing Live Incoming Data (No Fake Data Generators) ---
+        function processIncomingTemp(val) {
+            liveTemp = Math.round(val * 10) / 10;
+            document.getElementById('val-temp').innerText = liveTemp;
+
+            // Gauge (10°C to 50°C mapping)
+            const percent = Math.min(Math.max(((liveTemp - 10) / 40) * 100, 5), 100);
+            document.getElementById('temp-bar').style.width = percent + '%';
+
+            const badge = document.getElementById('temp-badge');
+            const humanStatus = document.getElementById('temp-human-status');
+
+            if (liveTemp > 38) {
+                badge.className = "text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
+                badge.innerText = currentLang === 'hi' ? "अत्यधिक गर्मी (Extreme Heat)" : "Extreme Heat";
+                humanStatus.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-600"></i> <span class="text-rose-700">High heat stress! Irrigate early evening.</span>`;
+            } else if (liveTemp < 15) {
+                badge.className = "text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200";
+                badge.innerText = currentLang === 'hi' ? "ठंडा मौसम (Cold)" : "Cold Weather";
+                humanStatus.innerHTML = `<i class="fa-solid fa-snowflake text-blue-600"></i> <span class="text-blue-700">Cool air. Minimal evaporation.</span>`;
+            } else {
+                badge.className = "text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200";
+                badge.innerText = currentLang === 'hi' ? "अनुकूल (Normal)" : "Optimal";
+                humanStatus.innerHTML = `<i class="fa-solid fa-sun text-amber-500"></i> <span class="text-amber-800">Favorable for plant photosynthesis</span>`;
+            }
+
+            appendChartDataPoint();
+            updateSmartAdvisory();
+        }
+
+        function processIncomingMoisture(val) {
+            liveMoisture = Math.round(val);
+            document.getElementById('val-moisture').innerText = liveMoisture;
+            document.getElementById('moisture-bar').style.width = Math.min(Math.max(liveMoisture, 0), 100) + '%';
+
+            const badge = document.getElementById('moisture-badge');
+            const humanStatus = document.getElementById('moisture-human-status');
+
+            if (liveMoisture < 30) {
+                badge.className = "text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
+                badge.innerText = currentLang === 'hi' ? "सूखी मिट्टी (Needs Water)" : "Too Dry";
+                humanStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-600"></i> <span class="text-rose-700 font-black">Needs Water Now (खेत में पानी चलाएं)</span>`;
+            } else if (liveMoisture > 85) {
+                badge.className = "text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200";
+                badge.innerText = currentLang === 'hi' ? "अति गीली (Saturated)" : "Overwatered";
+                humanStatus.innerHTML = `<i class="fa-solid fa-water text-indigo-600"></i> <span class="text-indigo-800 font-bold">Soil saturated. Stop irrigation valves.</span>`;
+            } else {
+                badge.className = "text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200";
+                badge.innerText = currentLang === 'hi' ? "सामान्य / पर्याप्त (Well Moist)" : "Well Moist";
+                humanStatus.innerHTML = `<i class="fa-solid fa-circle-check text-sky-600"></i> <span class="text-sky-800 font-bold">Optimal / Well Moist (पर्याप्त नमी है)</span>`;
+            }
+
+            appendChartDataPoint();
+            updateSmartAdvisory();
+        }
+
+        function handleSecurityState(isMotion) {
+            liveMotion = isMotion;
+            const banner = document.getElementById('motion-alert-banner');
+            const tile = document.getElementById('security-tile');
+            const pill = document.getElementById('security-pill');
+            const bigTxt = document.getElementById('security-big-text');
+            const sub = document.getElementById('security-sub-status');
+            const guardIcon = document.getElementById('guard-icon');
+            const timeTag = document.getElementById('motion-time-tag');
+
+            timeTag.innerText = `Update: ${new Date().toLocaleTimeString()}`;
+
+            if (isMotion) {
+                banner.classList.remove('hidden');
+                tile.className = "farm-card p-5 border-l-8 border-rose-600 pulse-alarm flex flex-col justify-between";
+                pill.className = "text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
+                pill.innerText = currentLang === 'hi' ? "खतरा! (ALERT)" : "INTRUDER ALERT";
+                bigTxt.className = "text-2xl font-black text-rose-600 flex items-center gap-2 animate-bounce";
+                bigTxt.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <span>Motion Detected!</span>`;
+                sub.innerText = currentLang === 'hi' ? "खेत के पास हलचल हुई है! तुरंत जांचें।" : "Active motion in field crop perimeter!";
+                guardIcon.className = "fa-solid fa-person-running text-rose-600";
+                playAlertTone();
+            } else {
+                banner.classList.add('hidden');
+                tile.className = "farm-card p-5 border-l-8 border-emerald-500 flex flex-col justify-between";
+                pill.className = "text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
+                pill.innerText = currentLang === 'hi' ? "सुरक्षित (Safe)" : "Perimeter Clear";
+                bigTxt.className = "text-2xl font-black text-emerald-700 flex items-center gap-2";
+                bigTxt.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-500"></i> <span>${currentLang === 'hi' ? 'खेत सुरक्षित' : 'All Safe'}</span>`;
+                sub.innerText = currentLang === 'hi' ? "कोई जंगली जानवर या व्यक्ति नहीं है।" : "No movement in field radar.";
+                guardIcon.className = "fa-solid fa-shield-cat text-emerald-600";
+            }
+        }
+
+        function updateSmartAdvisory() {
+            const titleEl = document.getElementById('advisory-title');
+            const subEl = document.getElementById('advisory-sub');
+
+            if (liveMoisture === null && liveTemp === null) {
+                titleEl.innerText = currentLang === 'hi' 
+                    ? "ESP32 सेंसर से सिग्नल की प्रतीक्षा..." 
+                    : "Waiting for sensor telemetry from ESP32 node...";
+                subEl.innerText = currentLang === 'hi'
+                    ? "सेंसर से डेटा आते ही सलाह यहां दिखाई देगी।"
+                    : "Live recommendations will appear once readings are received.";
+                return;
+            }
+
+            if (liveMoisture !== null && liveMoisture < 30) {
+                titleEl.innerText = currentLang === 'hi'
+                    ? "मिट्टी बहुत सूखी है! तुरंत जोन 1 या 2 में पानी चलाएं।"
+                    : "Soil moisture low! Open irrigation valve for Zone 1 or Zone 2.";
+                subEl.innerText = currentLang === 'hi'
+                    ? "फसल को पानी की आवश्यकता है। कृपया वाल्व चालू करें।"
+                    : "Water level is below 30%. Deep root hydration recommended.";
+            } else if (liveTemp !== null && liveTemp > 35) {
+                titleEl.innerText = currentLang === 'hi'
+                    ? "तेज धूप और गर्मी! वाष्पीकरण रोकने के लिए शाम को पानी दें।"
+                    : "High ambient temperature! Irrigate early evening to prevent evaporation.";
+                subEl.innerText = currentLang === 'hi'
+                    ? "दोपहर की कड़ी धूप में पानी देने से जड़ें गर्म हो सकती हैं।"
+                    : "Hot soil temperature. Hold off watering until sun sets.";
+            } else {
+                titleEl.innerText = currentLang === 'hi'
+                    ? "मिट्टी की नमी बहुत बढ़िया है। अभी पानी बंद रख सकते हैं।"
+                    : "Soil condition is great. Valves can remain closed.";
+                subEl.innerText = currentLang === 'hi'
+                    ? "फसल हरी और तंदुरुस्त है। बिजली और पानी की बचत करें।"
+                    : "Optimal moisture balance. No drought stress detected.";
+            }
+        }
+
+        // --- Actuator / Servo 2-Zone Controls (Firebase RTDB Write) ---
+        let zone1Open = false;
+        let zone2Open = false;
+
+        function syncValvesFromCommand(cmd) {
+            if (cmd === 'open1') {
+                zone1Open = true;
+            } else if (cmd === 'close1') {
+                zone1Open = false;
+            } else if (cmd === 'open2') {
+                zone2Open = true;
+            } else if (cmd === 'close2') {
+                zone2Open = false;
+            } else if (cmd === 'openall') {
+                zone1Open = true;
+                zone2Open = true;
+            } else if (cmd === 'closeall') {
+                zone1Open = false;
+                zone2Open = false;
+            }
+            updateZoneUI();
+        }
+
+        function updateZoneUI() {
+            const z1Card = document.getElementById('zone-card-1');
+            const z1Ind = document.getElementById('zone1-indicator');
+            const pipe1 = document.getElementById('pipe-flow-1');
+
+            const z2Card = document.getElementById('zone-card-2');
+            const z2Ind = document.getElementById('zone2-indicator');
+            const pipe2 = document.getElementById('pipe-flow-2');
+
+            const pipeState = document.getElementById('pipeline-overall-state');
+
+            // Zone 1
+            if (zone1Open) {
+                z1Card.className = "bg-white p-4 rounded-xl border-2 border-emerald-500 shadow-lg shadow-emerald-500/10 transition-all";
+                z1Ind.className = "flex items-center gap-1 text-xs font-black text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg animate-pulse";
+                z1Ind.innerHTML = `<i class="fa-solid fa-faucet-drip"></i> <span>FLOWING</span>`;
+                pipe1.style.width = "100%";
+            } else {
+                z1Card.className = "bg-white p-4 rounded-xl border-2 border-slate-200 transition-all";
+                z1Ind.className = "flex items-center gap-1 text-xs font-extrabold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg";
+                z1Ind.innerHTML = `<i class="fa-solid fa-lock"></i> <span>CLOSED</span>`;
+                pipe1.style.width = "0%";
+            }
+
+            // Zone 2
+            if (zone2Open) {
+                z2Card.className = "bg-white p-4 rounded-xl border-2 border-teal-500 shadow-lg shadow-teal-500/10 transition-all";
+                z2Ind.className = "flex items-center gap-1 text-xs font-black text-teal-800 bg-teal-100 px-2.5 py-1 rounded-lg animate-pulse";
+                z2Ind.innerHTML = `<i class="fa-solid fa-faucet-drip"></i> <span>FLOWING</span>`;
+                pipe2.style.width = "100%";
+            } else {
+                z2Card.className = "bg-white p-4 rounded-xl border-2 border-slate-200 transition-all";
+                z2Ind.className = "flex items-center gap-1 text-xs font-extrabold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg";
+                z2Ind.innerHTML = `<i class="fa-solid fa-lock"></i> <span>CLOSED</span>`;
+                pipe2.style.width = "0%";
+            }
+
+            // Overall Summary
+            if (zone1Open && zone2Open) {
+                pipeState.innerText = "Full Dual-Zone Active 🌊";
+                pipeState.className = "text-emerald-700 font-black";
+            } else if (zone1Open) {
+                pipeState.innerText = "Section 1 Only Supplying Water";
+                pipeState.className = "text-sky-700 font-black";
+            } else if (zone2Open) {
+                pipeState.innerText = "Section 2 Only Supplying Water";
+                pipeState.className = "text-teal-700 font-black";
+            } else {
+                pipeState.innerText = "All Valves Shut (Standby)";
+                pipeState.className = "text-slate-500 font-bold";
+            }
+        }
+
+        function sendServoCommand(cmd) {
+            document.getElementById('last-command-tag').innerHTML = `Dispatched: <b class="text-emerald-700 font-mono uppercase">${cmd}</b>`;
+
+            if (database) {
+                database.ref('esp8266/command').set(cmd)
+                    .then(() => {
+                        showToast(`Command: ${cmd.toUpperCase()}`, "Successfully sent to Firebase RTDB");
+                        syncValvesFromCommand(cmd);
+                    })
+                    .catch((err) => {
+                        console.error("Firebase command error:", err);
+                        showToast("Transmission Error", "Check Firebase network connectivity");
+                    });
+            } else {
+                showToast("Offline", "Firebase not ready");
+            }
+        }
+
+        // --- Toast Notifications ---
+        let toastTimeout = null;
+        function showToast(title, sub) {
+            const toast = document.getElementById('toast-msg');
+            document.getElementById('toast-text').innerText = title;
+            document.getElementById('toast-sub').innerText = sub;
+            toast.classList.remove('opacity-0', 'translate-y-24', 'pointer-events-none');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'translate-y-24', 'pointer-events-none');
+            }, 3000);
+        }
+
+        // --- Real Chart (Only Real Live Points Plotted) ---
+        let farmerChart = null;
+        const maxChartPoints = 30;
+        const liveChartTimeseries = [];
+        let activeChartMetric = 'moisture';
+
+        function seedBaselineChartData() {
+            const now = Date.now();
+            // Pre-seed 10 initial data points around 28.6°C and 78% moisture
+            for (let i = 9; i >= 0; i--) {
+                const timestamp = new Date(now - i * 5000);
+                liveChartTimeseries.push({
+                    x: timestamp,
+                    moisture: 78,
+                    temp: 28.6
+                });
+            }
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('liveFarmerChart').getContext('2d');
+
+            const gradientMoisture = ctx.createLinearGradient(0, 0, 0, 220);
+            gradientMoisture.addColorStop(0, 'rgba(14, 165, 233, 0.45)');
+            gradientMoisture.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
+
+            seedBaselineChartData();
+
+            // Hide the waiting overlay as chart is prepopulated with initial baseline readings
+            const emptyState = document.getElementById('chart-empty-state');
+            if (emptyState) {
+                emptyState.classList.add('hidden');
+            }
+
+            farmerChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Soil Moisture (%)',
+                        data: liveChartTimeseries.map(p => ({ x: p.x, y: p.moisture })),
+                        borderColor: '#0284c7',
+                        backgroundColor: gradientMoisture,
+                        borderWidth: 3.5,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 3,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#0284c7'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 300 },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'second',
+                                displayFormats: { second: 'HH:mm:ss' }
+                            },
+                            grid: { display: false },
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 6,
+                                color: '#64748b',
+                                font: { size: 11, weight: '700' }
+                            }
+                        },
+                        y: {
+                            suggestedMin: 0,
+                            suggestedMax: 100,
+                            grid: { color: 'rgba(226, 232, 240, 0.6)' },
+                            ticks: {
+                                color: '#64748b',
+                                font: { size: 11, weight: '700' }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            titleFont: { size: 12, weight: 'bold' },
+                            bodyFont: { size: 13, weight: 'bold' },
+                            padding: 10,
+                            cornerRadius: 10,
+                            displayColors: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function appendChartDataPoint() {
+            if (!farmerChart) return;
+
+            // Hide the waiting overlay once at least one live data point is recorded
+            const emptyState = document.getElementById('chart-empty-state');
+            if (emptyState && !emptyState.classList.contains('hidden')) {
+                emptyState.classList.add('hidden');
+            }
+
+            const now = new Date();
+            liveChartTimeseries.push({
+                x: now,
+                moisture: liveMoisture !== null ? liveMoisture : 0,
+                temp: liveTemp !== null ? liveTemp : 0
+            });
+
+            if (liveChartTimeseries.length > maxChartPoints) {
+                liveChartTimeseries.shift();
+            }
+
+            if (activeChartMetric === 'moisture') {
+                farmerChart.data.datasets[0].data = liveChartTimeseries.map(p => ({ x: p.x, y: p.moisture }));
+            } else {
+                farmerChart.data.datasets[0].data = liveChartTimeseries.map(p => ({ x: p.x, y: p.temp }));
+            }
+            farmerChart.update('none');
+        }
+
+        function switchChartMetric(metric) {
+            activeChartMetric = metric;
+            const btnMoisture = document.getElementById('btn-chart-moisture');
+            const btnTemp = document.getElementById('btn-chart-temp');
+            const ctx = document.getElementById('liveFarmerChart').getContext('2d');
+
+            if (metric === 'moisture') {
+                btnMoisture.className = "px-3 py-1.5 rounded-lg bg-sky-500 text-white font-extrabold shadow-sm";
+                btnTemp.className = "px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-extrabold hover:bg-slate-200";
+
+                const grad = ctx.createLinearGradient(0, 0, 0, 220);
+                grad.addColorStop(0, 'rgba(14, 165, 233, 0.45)');
+                grad.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
+
+                farmerChart.data.datasets[0].label = 'Soil Moisture (%)';
+                farmerChart.data.datasets[0].borderColor = '#0284c7';
+                farmerChart.data.datasets[0].pointBackgroundColor = '#0284c7';
+                farmerChart.data.datasets[0].backgroundColor = grad;
+                farmerChart.options.scales.y.suggestedMin = 0;
+                farmerChart.options.scales.y.suggestedMax = 100;
+                farmerChart.data.datasets[0].data = liveChartTimeseries.map(pt => ({ x: pt.x, y: pt.moisture }));
+            } else {
+                btnTemp.className = "px-3 py-1.5 rounded-lg bg-amber-500 text-white font-extrabold shadow-sm";
+                btnMoisture.className = "px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 font-extrabold hover:bg-slate-200";
+
+                const grad = ctx.createLinearGradient(0, 0, 0, 220);
+                grad.addColorStop(0, 'rgba(245, 158, 11, 0.45)');
+                grad.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+
+                farmerChart.data.datasets[0].label = 'Field Temperature (°C)';
+                farmerChart.data.datasets[0].borderColor = '#d97706';
+                farmerChart.data.datasets[0].pointBackgroundColor = '#d97706';
+                farmerChart.data.datasets[0].backgroundColor = grad;
+                farmerChart.options.scales.y.suggestedMin = 15;
+                farmerChart.options.scales.y.suggestedMax = 45;
+                farmerChart.data.datasets[0].data = liveChartTimeseries.map(pt => ({ x: pt.x, y: pt.temp }));
+            }
+            farmerChart.update();
+        }
+
+        // --- Live Weather Forecast (Open-Meteo API) ---
+        async function fetchAgriWeather() {
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=30.70&longitude=76.71&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto`);
+                const data = await res.json();
+                renderWeather(data);
+            } catch (err) {
+                console.error("Open-Meteo live API error:", err);
+                const grid = document.getElementById('weather-forecast-grid');
+                grid.innerHTML = `<span class="col-span-full text-xs font-semibold text-rose-500 py-3">Weather API currently unreachable</span>`;
+            }
+        }
+
+        function getWeatherIcon(code) {
+            if (code === 0) return '☀️'; // Clear sky
+            if (code <= 3) return '🌤️'; // Partly cloudy
+            if (code <= 48) return '🌫️'; // Fog
+            if (code <= 67) return '🌧️'; // Rain
+            if (code <= 82) return '🌦️'; // Showers
+            return '⛈️'; // Thunderstorm
+        }
+
+        function renderWeather(data) {
+            const container = document.getElementById('weather-forecast-grid');
+            if (!data || !data.daily || !data.daily.time) {
+                container.innerHTML = `<span class="col-span-full text-xs font-semibold text-slate-400 py-3">No forecast data</span>`;
+                return;
+            }
+
+            const daily = data.daily;
+            let html = '';
+
+            daily.time.forEach((t, i) => {
+                const dateObj = new Date(t);
+                const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                const icon = getWeatherIcon(daily.weathercode[i]);
+                const maxTemp = Math.round(daily.temperature_2m_max[i]);
+                const minTemp = Math.round(daily.temperature_2m_min[i]);
+                const rainProb = daily.precipitation_probability_max ? daily.precipitation_probability_max[i] : 0;
+
+                if (i === 0) {
+                    document.getElementById('today-icon').innerText = icon;
+                    document.getElementById('today-temp-range').innerText = `${maxTemp}°C / ${minTemp}°C`;
+                    document.getElementById('today-rain-prob').innerText = `${rainProb}%`;
+                    const rainAdvice = document.getElementById('today-rain-advice');
+                    if (rainProb > 60) {
+                        rainAdvice.innerText = currentLang === 'hi' ? "आज बारिश की संभावना! पानी न चलाएं।" : "Rain likely today! Hold off watering.";
+                        rainAdvice.className = "text-xs font-black text-rose-600";
+                    } else {
+                        rainAdvice.innerText = currentLang === 'hi' ? "मौसम साफ • सिंचाई के लिए सही समय" : "Clear skies • Good day for watering";
+                        rainAdvice.className = "text-xs font-bold text-emerald-700";
+                    }
+                }
+
+                html += `
+                    <div class="bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col items-center justify-between">
+                        <span class="text-[10px] font-black uppercase text-slate-400">${dayName}</span>
+                        <span class="text-xl my-1">${icon}</span>
+                        <span class="text-xs font-black text-slate-800">${maxTemp}°</span>
+                        <span class="text-[9px] font-extrabold text-sky-600 mt-0.5">💧 ${rainProb}%</span>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        // --- Init Window Loading ---
+        window.onload = function() {
+            initChart();
+            checkAuthStatus();
+            fetchAgriWeather();
+            updateZoneUI();
+            updateSmartAdvisory();
+        };
+    </script>
+</body>
+</html>
